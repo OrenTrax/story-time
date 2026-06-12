@@ -2199,12 +2199,28 @@ async function onAuthed(session){
   let p;
   try { p = await ensureProfile(session.user); }
   catch(e){ document.getElementById("auth-err").textContent = "שגיאת פרופיל: " + e.message; return; }
+  if(p.status === "blocked"){
+    document.getElementById("auth-err").textContent = "הגישה שלך לאתר נחסמה.";
+    try{ await sb.auth.signOut(); }catch(e){}
+    APP_STARTED = false;
+    return;
+  }
   try { await hydrate(); } catch(e){ console.error("hydrate failed", e); }
   DB.currentUser = p.id;
   save();
   hideAuthGate();
   injectLogout(session.user.email);
+  startHeartbeat(p.id);
   applyTheme(); renderWho(); render();
+}
+
+/* דופק נוכחות: מעדכן last_seen כל 30 שניות כדי שלוח האדמין יידע מי מחובר עכשיו */
+let HEARTBEAT_TIMER = null;
+function startHeartbeat(profileId){
+  const beat = () => { try{ sb.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", profileId).then(()=>{}, ()=>{}); }catch(e){} };
+  beat();
+  if(HEARTBEAT_TIMER) clearInterval(HEARTBEAT_TIMER);
+  HEARTBEAT_TIMER = setInterval(beat, 30000);
 }
 
 /* ===== שכבת נתונים: טעינה מהמסד (read) ===== */
