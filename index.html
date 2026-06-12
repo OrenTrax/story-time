@@ -2141,7 +2141,9 @@ function deleteCharacter(){
 const SB_URL = "https://jcohriccpuiuokgxtsyv.supabase.co";
 const SB_KEY = "sb_publishable_oYgnWSU7uBMFp0QAnwfwDw_jkbDmBeS";
 let sb = null;
-try { sb = window.supabase.createClient(SB_URL, SB_KEY); }
+try { sb = window.supabase.createClient(SB_URL, SB_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "donner_auth" }
+}); }
 catch(e){ console.error("Supabase init failed", e); }
 
 let AUTH_MODE = "signup"; // "signup" | "login"
@@ -2175,11 +2177,11 @@ async function authSubmit(){
   btn.disabled = true; btn.textContent = "רגע…";
   try{
     const res = AUTH_MODE === "signup"
-      ? await sb.auth.signUp({ email, password: pass })
+      ? await sb.auth.signUp({ email, password: pass, options: { emailRedirectTo: location.origin + location.pathname } })
       : await sb.auth.signInWithPassword({ email, password: pass });
     if(res.error){ err.textContent = translateAuthErr(res.error.message); btn.disabled=false; btn.textContent=ot; return; }
     if(!res.data.session){ err.textContent = "נשלח אליך אימייל אימות — אשר אותו ואז היכנס."; AUTH_MODE="login"; btn.disabled=false; btn.textContent="כניסה"; return; }
-    await onAuthed(res.data.session);
+    await startSession(res.data.session);
   }catch(e){ err.textContent = "שגיאה: " + e.message; btn.disabled=false; btn.textContent=ot; }
 }
 
@@ -2283,13 +2285,26 @@ function injectLogout(email){
 }
 async function authLogout(){ try{ await sb.auth.signOut(); }catch(e){} location.reload(); }
 
+let APP_STARTED = false;
+async function startSession(session){
+  if(APP_STARTED) return;
+  APP_STARTED = true;
+  await onAuthed(session);
+}
+// מאזין שמזהה כניסה/שחזור-סשן אוטומטית — גם אחרי רענון וגם אחרי אימות מייל.
+// כך שמי שנכנס פעם אחת נשאר מחובר ולא צריך להירשם שוב.
+if(sb){
+  sb.auth.onAuthStateChange((event, session) => {
+    if(session) startSession(session);
+    else if(event === "SIGNED_OUT") APP_STARTED = false;
+  });
+}
 async function initApp(){
   try{
     const { data } = await sb.auth.getSession();
-    if(data && data.session){ await onAuthed(data.session); return; }
+    if(data && data.session){ await startSession(data.session); return; }
   }catch(e){ console.error(e); }
-  render();          // רקע מאחורי שער ההזדהות
-  showAuthGate();
+  if(!APP_STARTED){ render(); showAuthGate(); }   // רקע מאחורי שער ההזדהות
 }
 initApp();
 </script>
