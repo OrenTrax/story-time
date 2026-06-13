@@ -456,6 +456,15 @@
   .att-audio{display:flex;align-items:center;gap:8px;padding:12px;font-size:20px}
   .att-audio audio{height:34px}
   .att-add{display:flex;gap:8px;flex-wrap:wrap}
+  .links-list{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+  .link-item{display:flex;align-items:flex-start;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;transition:.15s}
+  .link-item:hover{border-color:var(--accent-dim,#3d3658)}
+  .link-main{display:flex;align-items:flex-start;gap:10px;flex:1;text-decoration:none;color:var(--ink);min-width:0}
+  .link-fav{font-size:16px;flex:none;margin-top:1px}
+  .link-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .link-txt b{font-size:14.5px;word-break:break-word}
+  .link-host{font-size:11.5px;color:var(--ink-dim)}
+  .link-note{font-size:13px;color:var(--ink-dim);margin-top:3px;line-height:1.5}
   .profile-head .avatar{width:56px;height:56px;font-size:22px}
   .profile-head h1{margin:0;font-size:24px}
   .profile-head p{margin:2px 0 0;color:var(--ink-dim);font-size:14px}
@@ -823,6 +832,7 @@ function load(){
   if(!d.draftTitles) d.draftTitles={};
   if(!d.loose) d.loose=[];
   if(!d.tribeMeta) d.tribeMeta={};
+  if(!d.links) d.links=[];
   localStorage.setItem(DB_KEY, JSON.stringify(d)); return d;
 }
 function save(){ localStorage.setItem(DB_KEY, JSON.stringify(DB)); }
@@ -1423,7 +1433,8 @@ function viewEntry(charId, entryId){
         <div class="etext">${linkify(e.text)}</div>
         ${mediaGallery(e.media)}
       </div>
-    </div>`;
+    </div>
+    ${linksPanel("story", e.id, own)}`;
 }
 
 function viewDiscover(){
@@ -1482,6 +1493,8 @@ function viewProfile(){
     </div>
     <div class="prof-color"><span class="dest-label">צבע אישי:</span>${colorRow(u.color||"","setUserColor")}</div>
 
+    ${linksPanel("profile", u.id, true)}
+
     <div class="section-title"><h2>תת-פרופילים</h2><span class="count">${subs.length}</span><div class="line"></div>
       <button class="btn sm ghost" onclick="createSubProfile()">+ תת-פרופיל</button></div>
     <div class="grid">${ subs.length? subs.map(subCard).join("") :
@@ -1522,7 +1535,8 @@ function viewStory(id){
         <div class="etext">${linkify(s.text)}</div>
         ${mediaGallery(s.media)}
       </div>
-    </div>`;
+    </div>
+    ${linksPanel("story", s.id, mine)}`;
 }
 
 function tribeColor(t){ if(DB.tribeMeta[t]&&DB.tribeMeta[t].color) return DB.tribeMeta[t].color;
@@ -1652,6 +1666,7 @@ function viewChar(id){
     <div style="margin-top:18px">${storyComposer}</div>
     ${refsSection}
     ${attachPanel("char",c.id,c.media,mine)}
+    ${linksPanel("char",c.id,mine)}
 
     <div class="section-title convo"><h2>שיחה</h2><span class="count">${c.convo.length}</span><div class="line"></div></div>
     <div class="convo">
@@ -1976,6 +1991,42 @@ function removeAttachment(kind,id,i){
   save(); render();
 }
 
+/* ---- לינקים (מצורפים לפרופיל/דמות/סיפור) ---- */
+function linksPanel(attachType, attachId, canAdd){
+  const items=(DB.links||[]).filter(l=>l.attachType===attachType && String(l.attachId)===String(attachId)).sort((a,b)=>b.ts-a.ts);
+  const rows=items.map(l=>{
+    let host=""; try{ host=new URL(l.url).hostname.replace(/^www\./,""); }catch(e){}
+    const mine=l.ownerId===DB.currentUser;
+    return `<div class="link-item">
+      <a class="link-main" href="${esc(l.url)}" target="_blank" rel="noopener">
+        <span class="link-fav">🔗</span>
+        <span class="link-txt"><b>${esc(l.title||host||l.url)}</b>${(host&&l.title)?`<span class="link-host">${esc(host)}</span>`:""}${l.note?`<span class="link-note">${esc(l.note)}</span>`:""}</span>
+      </a>${mine?`<button class="mdel" onclick="event.stopPropagation();event.preventDefault();removeLink('${esc(l.id)}')">✕</button>`:""}</div>`;
+  }).join("");
+  const adder = canAdd ? `<button class="btn sm ghost" onclick="addLink('${attachType}','${esc(String(attachId))}')">+ הוסף לינק</button>` : "";
+  if(!items.length && !adder) return "";
+  return `<div class="section-title"><h2>לינקים</h2><span class="count">${items.length}</span><div class="line"></div></div>
+    <p class="att-note">דברים מהרשת ששווה לשמור — עם מקום לכתוב עליהם.</p>
+    <div class="links-list">${rows}</div>${adder}`;
+}
+function addLink(attachType, attachId){
+  let url=prompt("הדבק כתובת לינק:"); if(!url||!url.trim()) return;
+  url=url.trim(); if(!/^https?:\/\//i.test(url)) url="https://"+url;
+  const title=(prompt("כותרת ללינק (לא חובה):")||"").trim();
+  const note=(prompt("רוצה לכתוב משהו על הלינק? (לא חובה):")||"").trim();
+  const l={ id:"l"+Date.now(), ownerId:DB.currentUser, url, title:title||undefined, note:note||undefined, attachType, attachId:String(attachId), ts:Date.now() };
+  if(!DB.links) DB.links=[];
+  DB.links.push(l); save();
+  if(typeof sbSaveLink==="function") sbSaveLink(l);
+  render();
+}
+function removeLink(id){
+  if(!confirm("למחוק את הלינק?")) return;
+  DB.links=(DB.links||[]).filter(l=>l.id!==id); save();
+  if(typeof sbDelLink==="function") sbDelLink(id);
+  render();
+}
+
 function drawMediaStrip(){
   const strip=document.getElementById("media-strip");
   if(!W.media.length){ strip.innerHTML=""; strip.style.display="none"; return; }
@@ -2292,14 +2343,16 @@ function startHeartbeat(profileId){
 
 /* ===== שכבת נתונים: טעינה מהמסד (read) ===== */
 async function hydrate(){
-  const [pf, ch, st, cv, tm] = await Promise.all([
+  const [pf, ch, st, cv, tm, lk] = await Promise.all([
     sb.from("profiles").select("*"),
     sb.from("characters").select("*"),
     sb.from("stories").select("*"),
     sb.from("convo").select("*"),
-    sb.from("tribe_meta").select("*")
+    sb.from("tribe_meta").select("*"),
+    sb.from("links").select("*")
   ]);
-  for(const r of [pf,ch,st,cv,tm]) if(r.error) throw r.error;
+  for(const r of [pf,ch,st,cv,tm,lk]) if(r.error) throw r.error;
+  DB.links = (lk.data||[]).map(l=>({ id:l.id, ownerId:l.owner_id, url:l.url, title:l.title||undefined, note:l.note||undefined, attachType:l.attach_type||undefined, attachId:l.attach_id||undefined, ts:Number(l.ts)||0 }));
 
   DB.users = pf.data.map(p=>({
     id:p.id, name:p.name, bio:p.bio||"", color:p.color||undefined,
@@ -2358,6 +2411,8 @@ async function sbSaveConvo(t, characterId){
 async function sbDelChar(id){ if(sb){ const r=await sb.from("characters").delete().eq("id",id); if(r.error) console.error("sbDelChar",r.error); } }
 async function sbDelStory(id){ if(sb){ const r=await sb.from("stories").delete().eq("id",id); if(r.error) console.error("sbDelStory",r.error); } }
 async function sbSaveTribe(name, color){ if(sb){ const r=await sb.from("tribe_meta").upsert({ name, color: color||null }); if(r.error) console.error("sbSaveTribe",r.error); } }
+async function sbSaveLink(l){ if(sb){ const r=await sb.from("links").upsert({ id:l.id, owner_id:l.ownerId, url:l.url, title:l.title||null, note:l.note||null, attach_type:l.attachType||null, attach_id:l.attachId||null, ts:l.ts||Date.now() }); if(r.error) console.error("sbSaveLink",r.error); } }
+async function sbDelLink(id){ if(sb){ const r=await sb.from("links").delete().eq("id",id); if(r.error) console.error("sbDelLink",r.error); } }
 
 function injectLogout(email){
   if(document.getElementById("logout-btn")) return;
