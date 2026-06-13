@@ -465,6 +465,10 @@
   .link-txt b{font-size:14.5px;word-break:break-word}
   .link-host{font-size:11.5px;color:var(--ink-dim)}
   .link-note{font-size:13px;color:var(--ink-dim);margin-top:3px;line-height:1.5}
+  .share-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .share-row{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:30px;padding:5px 14px 5px 8px;cursor:pointer;font-size:14px}
+  .share-row input{accent-color:var(--accent,#e8924a);width:16px;height:16px;cursor:pointer}
+  .avatar.sm{width:26px;height:26px;font-size:12px}
   .profile-head .avatar{width:56px;height:56px;font-size:22px}
   .profile-head h1{margin:0;font-size:24px}
   .profile-head p{margin:2px 0 0;color:var(--ink-dim);font-size:14px}
@@ -864,7 +868,9 @@ function fdate(ts){ const d=new Date(ts);
   return `${HDAYS[d.getDay()]}, ${d.getDate()} ב${HMONTHS[d.getMonth()]} ${d.getFullYear()} · ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }
 /* ---- wiki-style linking ---- */
-function canViewChar(ch){ return ch && (ch.ownerId===DB.currentUser || ch.vis==="public"); }
+function myProfileIds(){ const a=window.CURRENT_ACCOUNT; return DB.users.filter(u=>!a||u.account===a).map(u=>u.id); }
+function sharedToMe(o){ const sw=o&&o.sharedWith; if(!sw||!sw.length) return false; const mine=myProfileIds(); return sw.some(id=>mine.includes(id)); }
+function canViewChar(ch){ return ch && (ch.ownerId===DB.currentUser || ch.vis==="public" || sharedToMe(ch)); }
 function findCharByName(name){
   const n=name.trim().toLowerCase();
   return DB.chars.find(c=>c.name.trim().toLowerCase()===n);
@@ -1154,8 +1160,8 @@ function allTribes(){
 }
 function tribeCount(t){ return DB.chars.filter(c=>c.vis==="public" && (c.tribes||[]).includes(t)).length; }
 function tribeHiddenFor(ownerId,t){ const u=user(ownerId); return !!(u&&u.privTribes&&u.privTribes.includes(t)) && ownerId!==DB.currentUser; }
-function charsInTribe(t){ return DB.chars.filter(c=>(c.vis==="public"||c.ownerId===DB.currentUser) && !tribeHiddenFor(c.ownerId,t) && (c.tribes||[]).includes(t)); }
-function looseInTribe(t){ return DB.loose.filter(s=>((s.mode||"mine")!=="secret"||s.ownerId===DB.currentUser) && !tribeHiddenFor(s.ownerId,t) && (s.tribes||[]).includes(t)); }
+function charsInTribe(t){ return DB.chars.filter(c=>(c.vis==="public"||c.ownerId===DB.currentUser||sharedToMe(c)) && !tribeHiddenFor(c.ownerId,t) && (c.tribes||[]).includes(t)); }
+function looseInTribe(t){ return DB.loose.filter(s=>((s.mode||"mine")!=="secret"||s.ownerId===DB.currentUser||sharedToMe(s)) && !tribeHiddenFor(s.ownerId,t) && (s.tribes||[]).includes(t)); }
 function tribeTotal(t){ return charsInTribe(t).length + looseInTribe(t).length; }
 
 /* ---------- nav state ---------- */
@@ -1416,7 +1422,7 @@ function viewEntry(charId, entryId){
   const e=c.entries.find(x=>x.id===entryId);
   if(!e) return `<button class="back" onclick="go('char','${c.id}')">← חזרה</button><div class="empty">הסיפור לא נמצא.</div>`;
   const own=e.authorId===DB.currentUser, a=user(e.authorId), m=EMODES[emode(e)];
-  if(emode(e)==="secret" && !own) return `<button class="back" onclick="go('char','${c.id}')">← חזרה</button><div class="empty">הסיפור הזה חסוי.</div>`;
+  if(emode(e)==="secret" && !own && !sharedToMe(e)) return `<button class="back" onclick="go('char','${c.id}')">← חזרה</button><div class="empty">הסיפור הזה חסוי.</div>`;
   return `<button class="back" onclick="go('char','${c.id}')">← ${esc(c.name)}</button>
     <div class="detail-head">
       <div class="glyph"${glyphStyle(c.color)}>${c.glyph}</div>
@@ -1434,18 +1440,19 @@ function viewEntry(charId, entryId){
         ${mediaGallery(e.media)}
       </div>
     </div>
-    ${linksPanel("story", e.id, own)}`;
+    ${linksPanel("story", e.id, own)}
+    ${sharePanel("story", e.id, own)}`;
 }
 
 function viewDiscover(){
-  let list=DB.chars.filter(c=>c.vis==="public").sort((a,b)=>lastTs(b)-lastTs(a));
+  let list=DB.chars.filter(c=>c.vis==="public"||sharedToMe(c)).sort((a,b)=>lastTs(b)-lastTs(a));
   if(tribeFilter) list=list.filter(c=>(c.tribes||[]).includes(tribeFilter));
   const tribes=allTribes().filter(t=>tribeCount(t)>0).sort((a,b)=>tribeCount(b)-tribeCount(a));
   const chips=`<div class="tribebar">
       <button class="chip ${!tribeFilter?'sel':''}" onclick="setTribe(null)">הכל</button>
       ${tribes.map(t=>`<button class="chip ${tribeFilter===t?'sel':''}" onclick="setTribe('${esc(t)}')">${esc(t)} <i>${tribeCount(t)}</i></button>`).join("")}
     </div>`;
-  const looseList = tribeFilter ? [] : DB.loose.filter(s=>(s.mode||"mine")!=="secret").sort((a,b)=>b.ts-a.ts);
+  const looseList = tribeFilter ? [] : DB.loose.filter(s=>(s.mode||"mine")!=="secret"||sharedToMe(s)).sort((a,b)=>b.ts-a.ts);
   const looseSection = looseList.length ? `
     <div class="section-title"><h2>סיפורים עצמאיים</h2><span class="count">${looseList.length}</span><div class="line"></div></div>
     <div class="grid">${looseList.map(storyCard).join("")}</div>` : "";
@@ -1462,7 +1469,7 @@ function lastTs(c){ const all=[...c.entries,...c.convo]; return all.length?Math.
 function emode(e){ return e.mode || "mine"; }
 function visibleEntries(c){
   if(c.ownerId===DB.currentUser) return c.entries;
-  return c.entries.filter(e=>emode(e)!=="secret");
+  return c.entries.filter(e=>emode(e)!=="secret" || sharedToMe(e));
 }
 function hasContribute(c){ return c.entries.some(e=>emode(e)==="contribute"); }
 
@@ -1517,7 +1524,7 @@ function viewStory(id){
   if(!s) return `<button class="back" onclick="go('discover')">← חזרה</button><div class="empty">הסיפור לא נמצא.</div>`;
   const o=user(s.ownerId);
   const mine=s.ownerId===DB.currentUser;
-  if((s.mode||"mine")==="secret" && !mine) return `<button class="back" onclick="go('discover')">← חזרה</button><div class="empty">הסיפור הזה חסוי.</div>`;
+  if((s.mode||"mine")==="secret" && !mine && !sharedToMe(s)) return `<button class="back" onclick="go('discover')">← חזרה</button><div class="empty">הסיפור הזה חסוי.</div>`;
   const m=EMODES[s.mode||"mine"];
   return `<button class="back" onclick="go('${mine?'profile':'discover'}')">← חזרה</button>
     <div class="detail-head">
@@ -1536,7 +1543,8 @@ function viewStory(id){
         ${mediaGallery(s.media)}
       </div>
     </div>
-    ${linksPanel("story", s.id, mine)}`;
+    ${linksPanel("story", s.id, mine)}
+    ${sharePanel("story", s.id, mine)}`;
 }
 
 function tribeColor(t){ if(DB.tribeMeta[t]&&DB.tribeMeta[t].color) return DB.tribeMeta[t].color;
@@ -1667,6 +1675,7 @@ function viewChar(id){
     ${refsSection}
     ${attachPanel("char",c.id,c.media,mine)}
     ${linksPanel("char",c.id,mine)}
+    ${sharePanel("char",c.id,mine)}
 
     <div class="section-title convo"><h2>שיחה</h2><span class="count">${c.convo.length}</span><div class="line"></div></div>
     <div class="convo">
@@ -2027,6 +2036,38 @@ function removeLink(id){
   render();
 }
 
+/* ---- חשיפה אישית: שיתוף עם משתמשים ספציפיים ---- */
+function otherUsers(){ const a=window.CURRENT_ACCOUNT; return DB.users.filter(u=>!u.parentId && u.account && u.account!==a); }
+function findStoryObjById(id){ const s=DB.loose.find(x=>x.id===id); if(s) return s; for(const c of DB.chars){ const e=(c.entries||[]).find(x=>x.id===id); if(e) return e; } return null; }
+function entryCharId(id){ if(DB.loose.find(x=>x.id===id)) return null; for(const c of DB.chars){ if((c.entries||[]).find(x=>x.id===id)) return c.id; } return null; }
+function sharePanel(kind, id, show){
+  if(!show) return "";
+  const obj = kind==="char" ? DB.chars.find(c=>c.id===id) : findStoryObjById(id);
+  if(!obj) return "";
+  const users=otherUsers();
+  if(!users.length) return "";
+  const sw=obj.sharedWith||[];
+  const rows=users.map(u=>{
+    const on=sw.includes(u.id);
+    return `<label class="share-row"><input type="checkbox" ${on?"checked":""} onchange="toggleShare('${kind}','${esc(id)}','${u.id}')">
+      <span class="avatar sm" style="background:${color(u.id)}">${initials(u.name)}</span> ${esc(u.name)}</label>`;
+  }).join("");
+  return `<div class="section-title"><h2>חשיפה אישית</h2><span class="count">${sw.length}</span><div class="line"></div></div>
+    <p class="att-note">סמן מי יוכל לראות את זה אישית — גם אם זה פרטי/חסוי לכל השאר.</p>
+    <div class="share-list">${rows}</div>`;
+}
+function toggleShare(kind, id, profileId){
+  const obj = kind==="char" ? DB.chars.find(c=>c.id===id) : findStoryObjById(id);
+  if(!obj) return;
+  if(!obj.sharedWith) obj.sharedWith=[];
+  const i=obj.sharedWith.indexOf(profileId);
+  if(i>=0) obj.sharedWith.splice(i,1); else obj.sharedWith.push(profileId);
+  save();
+  if(kind==="char"){ if(typeof sbSaveChar==="function") sbSaveChar(obj); }
+  else { if(typeof sbSaveStory==="function") sbSaveStory(obj, entryCharId(id)); }
+  render();
+}
+
 function drawMediaStrip(){
   const strip=document.getElementById("media-strip");
   if(!W.media.length){ strip.innerHTML=""; strip.style.display="none"; return; }
@@ -2363,7 +2404,7 @@ async function hydrate(){
   DB.chars = ch.data.map(c=>({
     id:c.id, ownerId:c.owner_id, glyph:c.glyph, name:c.name, essence:c.essence,
     preview:c.preview||undefined, color:c.color||undefined, tribes:c.tribes||[],
-    vis:c.vis, talk:c.talk||0,
+    vis:c.vis, talk:c.talk||0, sharedWith:c.shared_with||[],
     media:(c.media&&c.media.length)?c.media:undefined, entries:[], convo:[]
   }));
   const cmap = {}; DB.chars.forEach(c=>cmap[c.id]=c);
@@ -2372,7 +2413,8 @@ async function hydrate(){
     const base = {
       id:s.id, authorId:s.author_id, mode:s.mode,
       title:s.title||undefined, preview:s.preview||undefined, color:s.color||undefined,
-      text:s.body||"", media:(s.media&&s.media.length)?s.media:undefined, ts:Number(s.ts)||0
+      text:s.body||"", media:(s.media&&s.media.length)?s.media:undefined, ts:Number(s.ts)||0,
+      sharedWith:s.shared_with||[]
     };
     if(s.character_id && cmap[s.character_id]) cmap[s.character_id].entries.push(base);
     else DB.loose.push(Object.assign(base, { ownerId:s.author_id, tribes:s.tribes||[] }));
@@ -2390,7 +2432,7 @@ async function sbSaveChar(c){
   const r = await sb.from("characters").upsert({
     id:c.id, owner_id:c.ownerId, glyph:c.glyph||null, name:c.name, essence:c.essence||null,
     preview:c.preview||null, color:c.color||null, tribes:c.tribes||[], vis:c.vis||"public",
-    talk:c.talk||0, media:c.media||[], ts:Date.now()
+    talk:c.talk||0, media:c.media||[], shared_with:c.sharedWith||[], ts:Date.now()
   });
   if(r.error) console.error("sbSaveChar", r.error);
 }
@@ -2399,7 +2441,7 @@ async function sbSaveStory(e, characterId){
   const r = await sb.from("stories").upsert({
     id:e.id, author_id:e.authorId, character_id:characterId||null, mode:e.mode||"single",
     title:e.title||null, preview:e.preview||null, color:e.color||null, body:e.text||"",
-    tribes:e.tribes||[], media:e.media||[], ts:e.ts||Date.now()
+    tribes:e.tribes||[], media:e.media||[], shared_with:e.sharedWith||[], ts:e.ts||Date.now()
   });
   if(r.error) console.error("sbSaveStory", r.error);
 }
