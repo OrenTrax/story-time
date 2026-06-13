@@ -885,6 +885,12 @@ function findStoryByTitle(title){
   if(s) return {kind:"loose", story:s};
   return null;
 }
+function storyLabel(o){ const t=(o.title||"").trim(); if(t) return t; const snip=(o.text||"").replace(/\s+/g," ").trim(); return snip ? (snip.length>26?snip.slice(0,26)+"…":snip) : "סיפור"; }
+function findStoryByIdRef(id){
+  const s=DB.loose.find(x=>x.id===id); if(s) return {kind:"loose", story:s};
+  for(const c of DB.chars){ const e=(c.entries||[]).find(x=>x.id===id); if(e) return {kind:"char", char:c, entry:e}; }
+  return null;
+}
 function linkify(s){
   let out = esc(s);
   out = out.replace(/@\[([^\]\[]+)\]/g,(m,name)=>{
@@ -899,14 +905,14 @@ function linkify(s){
     if(ch && canViewChar(ch)) return `<a class="wlink char" onclick="event.stopPropagation();openCharPop(event,'${ch.id}')">${name.trim()}</a>`;
     return `<span class="wlink missing" title="אין דמות בשם הזה">${name.trim()}</span>`;
   });
-  out = out.replace(/\(\(([^)(]+)\)\)/g,(m,title)=>{
-    const raw=title.replace(/&quot;/g,'"').trim();
-    const hit=findStoryByTitle(raw);
-    if(hit && hit.kind==="char" && canViewChar(hit.char) && (emode(hit.entry)!=="secret"||hit.char.ownerId===DB.currentUser))
-      return `<a class="wlink story" onclick="event.stopPropagation();gotoStory('${hit.char.id}','${hit.entry.id}')">${title.trim()}</a>`;
-    if(hit && hit.kind==="loose" && ((hit.story.mode||"mine")!=="secret"||hit.story.ownerId===DB.currentUser))
-      return `<a class="wlink story" onclick="event.stopPropagation();go('story','${hit.story.id}')">${title.trim()}</a>`;
-    return `<span class="wlink missing" title="אין סיפור עם הכותרת הזו">${title.trim()}</span>`;
+  out = out.replace(/\(\(([^)(]+)\)\)/g,(m,inner)=>{
+    const raw=inner.replace(/&quot;/g,'"').trim();
+    const hit = raw.startsWith("id:") ? findStoryByIdRef(raw.slice(3).trim()) : findStoryByTitle(raw);
+    if(hit && hit.kind==="char" && canViewChar(hit.char) && (emode(hit.entry)!=="secret"||hit.char.ownerId===DB.currentUser||sharedToMe(hit.entry)))
+      return `<a class="wlink story" onclick="event.stopPropagation();gotoStory('${hit.char.id}','${hit.entry.id}')">${esc(storyLabel(hit.entry))}</a>`;
+    if(hit && hit.kind==="loose" && ((hit.story.mode||"mine")!=="secret"||hit.story.ownerId===DB.currentUser||sharedToMe(hit.story)))
+      return `<a class="wlink story" onclick="event.stopPropagation();go('story','${hit.story.id}')">${esc(storyLabel(hit.story))}</a>`;
+    return `<span class="wlink missing" title="הסיפור לא נמצא">${esc(raw.startsWith("id:")?"סיפור":inner.trim())}</span>`;
   });
   return out;
 }
@@ -1440,6 +1446,7 @@ function viewEntry(charId, entryId){
         ${mediaGallery(e.media)}
       </div>
     </div>
+    ${(!own && hasContribute(c)) ? `<div class="writecta" style="margin-top:18px"><button class="btn" onclick="openWriter('${c.id}')">⤳ הוסף סיפור משלך</button><span class="hint">${esc(c.name)} פתוחה לתרומה — אפשר להוסיף סיפור.</span></div>` : ""}
     ${linksPanel("story", e.id, own)}
     ${sharePanel("story", e.id, own)}`;
 }
@@ -1915,13 +1922,14 @@ function checkMention(){
   const pop=document.getElementById("mention-pop");
   if(kind==="story"){
     const items=[];
-    DB.chars.forEach(c=>{ if(!canViewChar(c)) return; (c.entries||[]).forEach(e=>{ if(e.title && e.title.toLowerCase().includes(q) && (emode(e)!=="secret"||c.ownerId===DB.currentUser)) items.push({title:e.title, by:user(c.ownerId).name}); }); });
-    DB.loose.forEach(s=>{ if(s.title && s.title.toLowerCase().includes(q) && ((s.mode||"mine")!=="secret"||s.ownerId===DB.currentUser)) items.push({title:s.title, by:user(s.ownerId).name}); });
+    const add=(o,by,vis)=>{ if(!vis) return; const label=storyLabel(o); if(label.toLowerCase().includes(q)) items.push({id:o.id, label, by}); };
+    DB.chars.forEach(c=>{ if(!canViewChar(c)) return; (c.entries||[]).forEach(e=>add(e, user(c.ownerId).name, (emode(e)!=="secret"||c.ownerId===DB.currentUser||sharedToMe(e)))); });
+    DB.loose.forEach(s=>add(s, user(s.ownerId).name, ((s.mode||"mine")!=="secret"||s.ownerId===DB.currentUser||sharedToMe(s))));
     mentionMatches=items.slice(0,6);
     if(!mentionMatches.length){ hideMentionPop(); return; }
     pop.innerHTML = mentionMatches.map((it,i)=>
       `<button class="mrow ${i===0?'first':''}" onmousedown="event.preventDefault();pickMention(${i})">
-         <span class="mg">◆</span> ${esc(it.title)} <span class="mby">· ${esc(it.by)}</span></button>`).join("");
+         <span class="mg">◆</span> ${esc(it.label)} <span class="mby">· ${esc(it.by)}</span></button>`).join("");
     pop.classList.add("open");
     return;
   }
@@ -1937,7 +1945,7 @@ function pickMention(i){
   const ta=document.getElementById("writer-text");
   const pos=ta.selectionStart;
   let token;
-  if(mentionKind==="story"){ const it=mentionMatches[i]; if(!it) return; token="(("+it.title+")) "; }
+  if(mentionKind==="story"){ const it=mentionMatches[i]; if(!it) return; token="((id:"+it.id+")) "; }
   else { const c=mentionMatches[i]; if(!c) return; token=(mentionKind==="char"?"[["+c.name+"]] ":"@["+c.name+"] "); }
   // אם כפתור הקישור כבר הוסיף סוגר נגדי אחרי הסמן — נבלע אותו כדי לא לקבל כפילות.
   let after=ta.value.slice(pos);
