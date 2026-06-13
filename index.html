@@ -464,7 +464,22 @@
     position:fixed;inset-inline-end:26px;bottom:26px;z-index:40;
     box-shadow:0 10px 30px rgba(0,0,0,.4);border-radius:30px;padding:14px 22px;
   }
-  @media(max-width:560px){ .nav button{padding:8px 9px;font-size:13px} .brand small{display:none} }
+  @media(max-width:600px){
+    .bar{ flex-wrap:wrap; gap:8px; padding:10px 12px; }
+    .brand b{ font-size:16px; }
+    .brand small{ display:none; }
+    .nav{ order:5; width:100%; margin:2px 0 0 0; gap:4px; justify-content:space-between; }
+    .nav button{ padding:7px 6px; font-size:13px; white-space:nowrap; flex:1; text-align:center; }
+    .write-cta{ padding:8px 11px; font-size:13px; }
+    .wbtn{ font-size:18px; }
+    .who{ padding:3px 3px 3px 8px; gap:5px; }
+    .who select{ font-size:12.5px; max-width:110px; }
+    main{ padding:18px 14px 96px; }
+    .lead h1{ font-size:22px; }
+    .lead p{ font-size:14px; }
+    .grid{ grid-template-columns:1fr; gap:14px; }
+    .float{ inset-inline-end:14px; bottom:16px; padding:13px 18px; }
+  }
 
   /* ---- fullscreen writer ---- */
   .writer{
@@ -1280,7 +1295,7 @@ function setCharVis(id,on){ const c=DB.chars.find(x=>x.id===id); if(c){ c.vis=on
 function setEntrySecret(cid,eid,on){ const c=DB.chars.find(x=>x.id===cid); const e=c&&c.entries.find(x=>x.id===eid); if(e){ e.mode=on?"secret":"mine"; save(); render(); } }
 function setLooseSecret(id,on){ const s=DB.loose.find(x=>x.id===id); if(s){ s.mode=on?"secret":"mine"; save(); render(); } }
 function setUserColor(c){ me().color=c||undefined; save(); render(); }
-function setTribeColorCur(c){ const t=route.id; if(!DB.tribeMeta[t]) DB.tribeMeta[t]={media:[]}; DB.tribeMeta[t].color=c||undefined; save(); render(); }
+function setTribeColorCur(c){ const t=route.id; if(!DB.tribeMeta[t]) DB.tribeMeta[t]={media:[]}; DB.tribeMeta[t].color=c||undefined; save(); if(typeof sbSaveTribe==="function") sbSaveTribe(t, c); render(); }
 function myTribeHidden(t){ const u=me(); return !!(u.privTribes && u.privTribes.includes(t)); }
 function toggleMyTribe(t,on){ const u=me(); if(!u.privTribes) u.privTribes=[];
   if(on){ if(!u.privTribes.includes(t)) u.privTribes.push(t); } else { u.privTribes=u.privTribes.filter(x=>x!==t); }
@@ -1513,7 +1528,9 @@ function viewStory(id){
 function tribeColor(t){ if(DB.tribeMeta[t]&&DB.tribeMeta[t].color) return DB.tribeMeta[t].color;
   const c=["#9a8fd6","#7aa2c8","#84c89a","#c889b4","#6ac1c8","#cd7d7d","#b0a06a","#8f9ad6"]; let h=0; for(const ch of t) h=(h+ch.charCodeAt(0))%c.length; return c[h]; }
 function viewTribes(){
-  const tribes=allTribes().filter(t=>tribeTotal(t)>0).sort((a,b)=>tribeTotal(b)-tribeTotal(a));
+  const set=new Set(allTribes().filter(t=>tribeTotal(t)>0));
+  Object.keys(DB.tribeMeta||{}).forEach(t=>set.add(t));   // כולל שבטים שנפתחו גם בלי תוכן עדיין
+  const tribes=[...set].sort((a,b)=>tribeTotal(b)-tribeTotal(a));
   const cards=tribes.map(t=>{
     const col=tribeColor(t), nc=charsInTribe(t).length, ns=looseInTribe(t).length;
     return `<div class="card tribe-card" onclick="go('tribe','${esc(t)}')">
@@ -1525,8 +1542,17 @@ function viewTribes(){
   return `<div class="lead">
       <h1>שבטים</h1>
       <p>הנושאים העליונים. כל שבט מאגד את הדמויות והסיפורים שחושבים על אותו עניין. זו השכבה שמעל הכל.</p>
+      <button class="btn sm" onclick="createTribe()" style="margin-top:10px">+ פתח שבט חדש</button>
     </div>
-    <div class="grid">${ tribes.length? cards : `<div class="empty">עוד אין שבטים פעילים. תייג דמות או סיפור לשבט.</div>`}</div>`;
+    <div class="grid">${ tribes.length? cards : `<div class="empty">עוד אין שבטים. לחץ "פתח שבט חדש" כדי להתחיל.</div>`}</div>`;
+}
+function createTribe(){
+  const name=prompt("שם השבט החדש:"); if(!name||!name.trim()) return;
+  const t=name.trim();
+  if(!DB.tribeMeta[t]) DB.tribeMeta[t]={};
+  save();
+  if(typeof sbSaveTribe==="function") sbSaveTribe(t);
+  go("tribe", t);
 }
 function viewTribe(t){
   const col=tribeColor(t);
@@ -1848,18 +1874,34 @@ function insertLink(kind){
   ta.focus(); ta.setSelectionRange(sel?cur+close.length:cur, sel?cur+close.length:cur);
   onWrite();
 }
-/* @ mention autocomplete */
-let mentionStart=-1, mentionMatches=[];
+/* השלמה אוטומטית: @דמות, [[דמות]], ((סיפור)) */
+let mentionStart=-1, mentionMatches=[], mentionKind="mention";
 function checkMention(){
   const ta=document.getElementById("writer-text");
   const pos=ta.selectionStart;
   const before=ta.value.slice(0,pos);
-  const mm=before.match(/@([^\s@\[\]]{0,30})$/);
-  if(!mm){ hideMentionPop(); return; }
-  mentionStart=pos-mm[0].length;
-  const q=mm[1].toLowerCase();
-  mentionMatches=DB.chars.filter(c=>canViewChar(c) && c.name.toLowerCase().includes(q)).slice(0,6);
+  let m, kind;
+  if(m=before.match(/\[\[([^\]\[]{0,40})$/)) kind="char";        // [[ דמות
+  else if(m=before.match(/\(\(([^)(]{0,40})$/)) kind="story";    // (( סיפור
+  else if(m=before.match(/@([^\s@\[\]]{0,30})$/)) kind="mention"; // @ תיוג דמות
+  else { hideMentionPop(); return; }
+  mentionKind=kind;
+  mentionStart=pos-m[0].length;
+  const q=m[1].toLowerCase();
   const pop=document.getElementById("mention-pop");
+  if(kind==="story"){
+    const items=[];
+    DB.chars.forEach(c=>{ if(!canViewChar(c)) return; (c.entries||[]).forEach(e=>{ if(e.title && e.title.toLowerCase().includes(q) && (emode(e)!=="secret"||c.ownerId===DB.currentUser)) items.push({title:e.title, by:user(c.ownerId).name}); }); });
+    DB.loose.forEach(s=>{ if(s.title && s.title.toLowerCase().includes(q) && ((s.mode||"mine")!=="secret"||s.ownerId===DB.currentUser)) items.push({title:s.title, by:user(s.ownerId).name}); });
+    mentionMatches=items.slice(0,6);
+    if(!mentionMatches.length){ hideMentionPop(); return; }
+    pop.innerHTML = mentionMatches.map((it,i)=>
+      `<button class="mrow ${i===0?'first':''}" onmousedown="event.preventDefault();pickMention(${i})">
+         <span class="mg">◆</span> ${esc(it.title)} <span class="mby">· ${esc(it.by)}</span></button>`).join("");
+    pop.classList.add("open");
+    return;
+  }
+  mentionMatches=DB.chars.filter(c=>canViewChar(c) && c.name.toLowerCase().includes(q)).slice(0,6);
   if(!mentionMatches.length){ hideMentionPop(); return; }
   pop.innerHTML = mentionMatches.map((c,i)=>
     `<button class="mrow ${i===0?'first':''}" onmousedown="event.preventDefault();pickMention(${i})">
@@ -1868,11 +1910,16 @@ function checkMention(){
 }
 function hideMentionPop(){ mentionStart=-1; mentionMatches=[]; document.getElementById("mention-pop").classList.remove("open"); }
 function pickMention(i){
-  const c=mentionMatches[i]; if(!c) return;
   const ta=document.getElementById("writer-text");
   const pos=ta.selectionStart;
-  const token="@["+c.name+"] ";
-  ta.value = ta.value.slice(0,mentionStart)+token+ta.value.slice(pos);
+  let token;
+  if(mentionKind==="story"){ const it=mentionMatches[i]; if(!it) return; token="(("+it.title+")) "; }
+  else { const c=mentionMatches[i]; if(!c) return; token=(mentionKind==="char"?"[["+c.name+"]] ":"@["+c.name+"] "); }
+  // אם כפתור הקישור כבר הוסיף סוגר נגדי אחרי הסמן — נבלע אותו כדי לא לקבל כפילות.
+  let after=ta.value.slice(pos);
+  const closer = mentionKind==="char" ? "]]" : (mentionKind==="story" ? "))" : "");
+  if(closer && after.startsWith(closer)) after=after.slice(closer.length);
+  ta.value = ta.value.slice(0,mentionStart)+token+after;
   const cur=mentionStart+token.length;
   ta.focus(); ta.setSelectionRange(cur,cur);
   hideMentionPop(); onWrite();
@@ -2310,6 +2357,7 @@ async function sbSaveConvo(t, characterId){
 }
 async function sbDelChar(id){ if(sb){ const r=await sb.from("characters").delete().eq("id",id); if(r.error) console.error("sbDelChar",r.error); } }
 async function sbDelStory(id){ if(sb){ const r=await sb.from("stories").delete().eq("id",id); if(r.error) console.error("sbDelStory",r.error); } }
+async function sbSaveTribe(name, color){ if(sb){ const r=await sb.from("tribe_meta").upsert({ name, color: color||null }); if(r.error) console.error("sbSaveTribe",r.error); } }
 
 function injectLogout(email){
   if(document.getElementById("logout-btn")) return;
