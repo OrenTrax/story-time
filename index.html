@@ -1142,11 +1142,20 @@ function setTribe(t){ tribeFilter = (tribeFilter===t)?null:t; render(); }
 /* ---------- top user switcher ---------- */
 function renderWho(){
   const sel=document.getElementById("who-sel");
-  sel.innerHTML = DB.users.map(u=>`<option value="${u.id}" ${u.id===DB.currentUser?"selected":""}>${u.parentId?"↳ ":""}${esc(u.name)}</option>`).join("");
+  // מציגים רק את הפרופילים של החשבון המחובר (המשתמש + הפרסונות שלו), לא של אחרים.
+  const acct = window.CURRENT_ACCOUNT;
+  let mine = acct ? DB.users.filter(u=>u.account===acct) : DB.users;
+  if(!mine.length) mine = DB.users.filter(u=>u.id===DB.currentUser);
+  sel.innerHTML = mine.map(u=>`<option value="${u.id}" ${u.id===DB.currentUser?"selected":""}>${u.parentId?"↳ ":""}${esc(u.name)}</option>`).join("");
   const av=document.getElementById("who-av");
   av.textContent=initials(me().name); av.style.background=color(me().id);
 }
-function switchUser(id){ DB.currentUser=id; save(); applyTheme(); renderWho(); render(); }
+function switchUser(id){
+  // הגנה: אי אפשר לעבור לחשבון של מישהו אחר.
+  const t = DB.users.find(u=>u.id===id);
+  if(window.CURRENT_ACCOUNT && t && t.account && t.account!==window.CURRENT_ACCOUNT) return;
+  DB.currentUser=id; save(); applyTheme(); renderWho(); render();
+}
 
 function applyTheme(){
   const light = me() && me().theme==="light";
@@ -1244,8 +1253,13 @@ function initFireDrag(){
 function createSubProfile(){
   const name=prompt("שם תת-הפרופיל:"); if(!name||!name.trim()) return;
   const id="u"+Date.now();
-  DB.users.push({id, name:name.trim(), bio:"", parentId:DB.currentUser});
-  DB.currentUser=id; save(); applyTheme(); go("profile");
+  const acct=window.CURRENT_ACCOUNT, parent=DB.currentUser;
+  DB.users.push({id, name:name.trim(), bio:"", parentId:parent, account:acct});
+  DB.currentUser=id; save();
+  if(typeof sb!=="undefined" && sb && acct){
+    sb.from("profiles").insert({ id, account_id:acct, parent_id:parent, name:name.trim() }).then(()=>{}, e=>console.error("subprofile", e));
+  }
+  applyTheme(); go("profile");
 }
 function deleteSubProfile(id){
   const u=DB.users.find(x=>x.id===id); if(!u||!u.parentId) return;
@@ -2191,7 +2205,12 @@ async function ensureProfile(authUser){
   if(q.data && q.data.length) return q.data[0];
   const name = (authUser.email || "כותב").split("@")[0];
   const ins = await sb.from("profiles").insert({ account_id: authUser.id, name }).select().single();
-  if(ins.error) throw ins.error;
+  if(ins.error){
+    // ייתכן שפרופיל נוצר במקביל (מרוץ) — האינדקס הייחודי חוסם כפילות, אז נקרא את הקיים.
+    const q2 = await sb.from("profiles").select("*").eq("account_id", authUser.id).is("parent_id", null).limit(1);
+    if(q2.data && q2.data.length) return q2.data[0];
+    throw ins.error;
+  }
   return ins.data;
 }
 
@@ -2205,6 +2224,7 @@ async function onAuthed(session){
     APP_STARTED = false;
     return;
   }
+  window.CURRENT_ACCOUNT = session.user.id;
   try { await hydrate(); } catch(e){ console.error("hydrate failed", e); }
   DB.currentUser = p.id;
   save();
@@ -2237,7 +2257,8 @@ async function hydrate(){
   DB.users = pf.data.map(p=>({
     id:p.id, name:p.name, bio:p.bio||"", color:p.color||undefined,
     theme:p.theme||undefined, parentId:p.parent_id||undefined,
-    privTribes:p.priv_tribes||[], settings:p.settings||undefined
+    privTribes:p.priv_tribes||[], settings:p.settings||undefined,
+    account:p.account_id
   }));
   DB.chars = ch.data.map(c=>({
     id:c.id, ownerId:c.owner_id, glyph:c.glyph, name:c.name, essence:c.essence,
