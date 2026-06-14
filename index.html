@@ -1652,17 +1652,13 @@ function viewChar(id){
   // story composer
   let storyComposer;
   if(mine){
-    const hasDraft = (DB.drafts[c.id]||"").trim();
     storyComposer = `<div class="writecta">
       <button class="btn" onclick="openWriter('${c.id}')">✍ כתוב סיפור חדש</button>
-      ${hasDraft?`<span class="hint">יש לך טיוטה שמורה. לחץ להמשיך.</span>`:""}
     </div>`;
   } else if(hasContribute(c)){
-    const hasDraft = (DB.drafts[c.id]||"").trim();
     storyComposer = `<div class="writecta">
       <button class="btn" onclick="openWriter('${c.id}')">⤳ הוסף סיפור</button>
       <span class="hint">${esc(o.name)} פתח לתרומה.</span>
-      ${hasDraft?`<span class="hint">יש לך טיוטה שמורה.</span>`:""}
     </div>`;
   } else {
     storyComposer = `<div class="locked">לא פתוח לתרומה. רק ${esc(o.name)} כותב כאן. אפשר לפתוח שיחה למטה.</div>`;
@@ -1762,9 +1758,10 @@ function openW(st){
     const s=DB.loose.find(x=>x.id===W.looseId);
     ta.value=s?s.text:""; ti.value=s&&s.title?s.title:""; tp.value=s&&s.preview?s.preview:""; W.mode=s?(s.mode||"mine"):"mine";
     W.isOwner=(s.ownerId===DB.currentUser); W.tribes=s&&s.tribes?s.tribes.slice():[]; W.media=s&&s.media?s.media.slice():[]; W.color=s&&s.color?s.color:"";
-  } else { // new
+  } else { // new — תמיד מתחילים סיפור חדש וריק (לא טוענים טיוטה ישנה)
     const k=W.attachTo||LOOSE_KEY;
-    ta.value=DB.drafts[k]||""; ti.value=DB.draftTitles[k]||""; tp.value="";
+    delete DB.drafts[k]; delete DB.draftTitles[k];
+    ta.value=""; ti.value=""; tp.value="";
     const targetChar = W.attachTo?DB.chars.find(x=>x.id===W.attachTo):null;
     W.isOwner = targetChar ? (targetChar.ownerId===DB.currentUser) : true;
     W.mode = W.isOwner ? "mine" : "single"; W.tribes=[]; W.media=[]; W.color="";
