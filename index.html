@@ -649,7 +649,7 @@
     <div class="field">
       <label>נראוּת</label>
       <div class="seg" id="seg-vis">
-        <button data-v="private">🔒 פרטי (רק אני)</button>
+        <button data-v="private">🔒 חסוי (רק אני)</button>
         <button data-v="public">🌐 ציבורי</button>
       </div>
     </div>
@@ -1378,7 +1378,7 @@ function render(){
 function card(c){
   const o=user(c.ownerId);
   const tags=[];
-  if(c.vis==="private") tags.push(`<span class="tag private">🔒 פרטי</span>`);
+  if(c.vis==="private") tags.push(`<span class="tag private">🔒 חסוי</span>`);
   (c.tribes||[]).forEach(t=>tags.push(`<span class="tag tribe" onclick="event.stopPropagation();go('tribe','${esc(t)}')">${esc(t)}</span>`));
   if(c.talk>0) tags.push(`<span class="tag talk">${TALK[c.talk]}</span>`);
   if(hasContribute(c)) tags.push(`<span class="tag collab">⤳ פתוח לתרומה</span>`);
@@ -1607,9 +1607,9 @@ function viewChar(id){
   if(!c) return `<button class="back" onclick="go('discover')">← חזרה</button><div class="empty">הדמות לא נמצאה.</div>`;
   const o=user(c.ownerId);
   const mine = c.ownerId===DB.currentUser;
-  if(c.vis==="private" && !mine) return `<button class="back" onclick="go('discover')">← חזרה</button><div class="empty">הדמות הזו פרטית.</div>`;
+  if(c.vis==="private" && !mine && !sharedToMe(c)) return `<button class="back" onclick="go('discover')">← חזרה</button><div class="empty">הדמות הזו חסויה.</div>`;
   const tags=[];
-  if(c.vis==="private") tags.push(`<span class="tag private">🔒 פרטי</span>`);
+  if(c.vis==="private") tags.push(`<span class="tag private">🔒 חסוי</span>`);
   (c.tribes||[]).forEach(t=>tags.push(`<span class="tag tribe" onclick="event.stopPropagation();go('tribe','${esc(t)}')">${esc(t)}</span>`));
   tags.push(`<span class="tag talk">${TALK[c.talk]}</span>`);
   if(hasContribute(c)) tags.push(`<span class="tag collab">⤳ פתוח לתרומה</span>`);
