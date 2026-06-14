@@ -1334,15 +1334,46 @@ function exportData(){
 function importData(input){
   const f=input.files&&input.files[0]; if(!f) return;
   const r=new FileReader();
-  r.onload=()=>{
+  r.onload=async ()=>{
     try{
       const d=JSON.parse(r.result);
       if(!d.users||!d.chars) throw new Error("bad");
-      d.drafts=d.drafts||{}; d.draftTitles=d.draftTitles||{}; d.loose=d.loose||[];
-      if(!d.currentUser||!d.users.find(u=>u.id===d.currentUser)) d.currentUser=d.users[0].id;
-      DB=d; save(); go("profile");
-      alert("השחזור הושלם. כל הנתונים נטענו מהקובץ.");
-    }catch(e){ alert("הקובץ לא תקין או לא קובץ גיבוי של דונר."); }
+      const me=DB.currentUser;
+      const backupOwner=d.currentUser || (d.users[0] && d.users[0].id);
+      if(!me || typeof sb==="undefined" || !sb){ alert("צריך להיות מחובר כדי לשחזר לענן."); input.value=""; return; }
+      if(!confirm("שחזור יחזיר את התוכן שלך מהגיבוי לחשבון הנוכחי בענן.\nזה מוסיף/מעדכן בלבד — לא מוחק כלום, ולא נוגע בתוכן של אחרים.\nלהמשיך?")){ input.value=""; return; }
+      let nC=0,nS=0,nL=0,nT=0;
+      // הדמויות שלי + הסיפורים שכתבתי בתוכן
+      for(const c of (d.chars||[])){
+        if(c.ownerId!==backupOwner) continue;
+        await sbSaveChar(Object.assign({}, c, {ownerId:me})); nC++;
+        for(const e of (c.entries||[])){
+          if(e.authorId!==backupOwner) continue;
+          await sbSaveStory(Object.assign({}, e, {authorId:me}), c.id); nS++;
+        }
+        for(const t of (c.convo||[])){
+          if(t.authorId!==backupOwner) continue;
+          await sbSaveConvo(Object.assign({}, t, {authorId:me}), c.id); nT++;
+        }
+      }
+      // סיפורים עצמאיים שלי
+      for(const s of (d.loose||[])){
+        if(s.ownerId!==backupOwner) continue;
+        await sbSaveStory(Object.assign({}, s, {authorId:me, ownerId:me}), null); nS++;
+      }
+      // לינקים שלי
+      for(const l of (d.links||[])){
+        if(l.ownerId!==backupOwner) continue;
+        await sbSaveLink(Object.assign({}, l, {ownerId:me})); nL++;
+      }
+      // פרטי הפרופיל שלי
+      const myProf=(d.users||[]).find(u=>u.id===backupOwner);
+      if(myProf){ try{ await sb.from("profiles").update({ name:myProf.name||"כותב", bio:myProf.bio||null, color:myProf.color||null, theme:myProf.theme||"dark" }).eq("id", me); }catch(e){} }
+      // רענון מהענן
+      try{ await hydrate(); }catch(e){}
+      renderWho(); go("profile");
+      alert("השחזור לענן הושלם ✓\nדמויות: "+nC+" · סיפורים: "+nS+" · לינקים: "+nL+"\nעכשיו זה שמור בענן — תראה את זה מכל מכשיר.");
+    }catch(e){ alert("הקובץ לא תקין או לא קובץ גיבוי. ("+(e.message||e)+")"); }
     input.value="";
   };
   r.readAsText(f);
