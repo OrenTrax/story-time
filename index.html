@@ -1588,12 +1588,11 @@ function viewStory(id){
 function tribeColor(t){ if(DB.tribeMeta[t]&&DB.tribeMeta[t].color) return DB.tribeMeta[t].color;
   const c=["#9a8fd6","#7aa2c8","#84c89a","#c889b4","#6ac1c8","#cd7d7d","#b0a06a","#8f9ad6"]; let h=0; for(const ch of t) h=(h+ch.charCodeAt(0))%c.length; return c[h]; }
 function viewTribes(){
-  const set=new Set(allTribes().filter(t=>tribeTotal(t)>0));
-  Object.keys(DB.tribeMeta||{}).forEach(t=>set.add(t));   // כולל שבטים שנפתחו גם בלי תוכן עדיין
-  const tribes=[...set].sort((a,b)=>tribeTotal(b)-tribeTotal(a));
+  // רק שבטים פעילים (עם תוכן), מהפעיל לדליל — שבטים ריקים מוסתרים כדי לא להציף.
+  const tribes=allTribes().filter(t=>tribeTotal(t)>0).sort((a,b)=>tribeTotal(b)-tribeTotal(a));
   const cards=tribes.map(t=>{
     const col=tribeColor(t), nc=charsInTribe(t).length, ns=looseInTribe(t).length;
-    return `<div class="card tribe-card" onclick="go('tribe','${esc(t)}')">
+    return `<div class="card tribe-card" data-name="${esc(t.toLowerCase())}" onclick="go('tribe','${esc(t)}')">
       <div class="glyph" style="background:${col}22;border-color:${col}66;color:${col}">☷</div>
       <h3>${esc(t)}</h3>
       <div class="meta"><span>${nc} דמויות</span><span>·</span><span>${ns} סיפורים</span></div>
@@ -1601,18 +1600,36 @@ function viewTribes(){
   }).join("");
   return `<div class="lead">
       <h1>שבטים</h1>
-      <p>הנושאים העליונים. כל שבט מאגד את הדמויות והסיפורים שחושבים על אותו עניין. זו השכבה שמעל הכל.</p>
-      <button class="btn sm" onclick="createTribe()" style="margin-top:10px">+ פתח שבט חדש</button>
+      <p>הנושאים העליונים. כל שבט מאגד את הדמויות והסיפורים שחושבים על אותו עניין.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px">
+        <input id="tribe-search" placeholder="🔍 חיפוש שבט…" oninput="filterTribes(this.value)"
+          style="flex:1;min-width:180px;max-width:320px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 14px;color:var(--ink);font-family:inherit;font-size:14px;outline:none">
+        <button class="btn sm" onclick="createTribe()">+ פתח שבט חדש</button>
+        <span class="hint" id="tribe-count">${tribes.length} שבטים פעילים</span>
+      </div>
     </div>
-    <div class="grid">${ tribes.length? cards : `<div class="empty">עוד אין שבטים. לחץ "פתח שבט חדש" כדי להתחיל.</div>`}</div>`;
+    <div class="grid" id="tribes-grid">${ tribes.length? cards : `<div class="empty">עוד אין שבטים פעילים. תייג דמות/סיפור לשבט, או "פתח שבט חדש".</div>`}</div>`;
+}
+function filterTribes(q){
+  q=(q||"").trim().toLowerCase();
+  let shown=0;
+  document.querySelectorAll("#tribes-grid .tribe-card").forEach(el=>{
+    const hit = !q || (el.dataset.name||"").includes(q);
+    el.style.display = hit ? "" : "none";
+    if(hit) shown++;
+  });
+  const c=document.getElementById("tribe-count"); if(c) c.textContent = q ? (shown+" תוצאות") : (document.querySelectorAll("#tribes-grid .tribe-card").length+" שבטים פעילים");
 }
 function createTribe(){
   const name=prompt("שם השבט החדש:"); if(!name||!name.trim()) return;
   const t=name.trim();
-  if(!DB.tribeMeta[t]) DB.tribeMeta[t]={};
+  // מניעת כפילות: אם כבר קיים שבט עם אותו שם (ללא תלות באותיות גדולות/רישיות) — נשתמש בו.
+  const existing=allTribes().find(x=>x.toLowerCase()===t.toLowerCase());
+  const tribe=existing||t;
+  if(!DB.tribeMeta[tribe]) DB.tribeMeta[tribe]={};
   save();
-  if(typeof sbSaveTribe==="function") sbSaveTribe(t);
-  go("tribe", t);
+  if(typeof sbSaveTribe==="function") sbSaveTribe(tribe);
+  go("tribe", tribe);
 }
 function viewTribe(t){
   const col=tribeColor(t);
