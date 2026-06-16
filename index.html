@@ -578,7 +578,7 @@
     </div>
     <nav class="nav">
       <button id="nav-discover" onclick="go('discover')">גילוי</button>
-      <button id="nav-tribes" onclick="go('tribes')">שבטים</button>
+      <button id="nav-tribes" onclick="go('tribes')">נושאים</button>
       <button id="nav-map" onclick="go('map')">מפה</button>
       <button id="nav-profile" onclick="go('profile')">הפרופיל שלי</button>
     </nav>
@@ -639,10 +639,10 @@
       <textarea id="f-preview" rows="2" placeholder="ברירת מחדל: תחילת המהות"></textarea>
     </div>
     <div class="field">
-      <label>שבטים (נושאים שהדמות שייכת אליהם)</label>
+      <label>נושאים שהדמות שייכת אליהם</label>
       <div class="glyphpick" id="tribepick" style="margin-bottom:8px"></div>
       <div style="display:flex;gap:8px">
-        <input type="text" id="f-newtribe" placeholder="שבט חדש משלך…" maxlength="20" onkeydown="if(event.key==='Enter'){event.preventDefault();addTribe()}" />
+        <input type="text" id="f-newtribe" placeholder="נושא חדש משלך…" maxlength="20" onkeydown="if(event.key==='Enter'){event.preventDefault();addTribe()}" />
         <button class="btn ghost sm" type="button" onclick="addTribe()">הוסף</button>
       </div>
     </div>
@@ -697,7 +697,7 @@
         <select id="writer-dest" onchange="onDestChange()"></select>
       </div>
       <div class="writer-tribes-row" id="writer-tribes-row">
-        <span class="dest-label">שבטים:</span>
+        <span class="dest-label">נושאים:</span>
         <div class="wtribes" id="writer-tribes"></div>
       </div>
       <div class="writer-color-row" id="writer-color-row">
@@ -739,7 +739,7 @@
 <div class="scrim" id="rec-scrim">
   <div class="modal rec-modal">
     <h2>הקלטה</h2>
-    <p class="sub">הקלטת קול. תצורף לסיפור / לדמות / לשבט כתוספת.</p>
+    <p class="sub">הקלטת קול. תצורף לסיפור / לדמות / לנושא כתוספת.</p>
     <div class="rec-body">
       <button class="rec-btn" id="rec-btn" onclick="toggleRec()">●</button>
       <div class="rec-time" id="rec-time">00:00</div>
@@ -953,13 +953,13 @@ document.addEventListener("click",e=>{
 /* ===================== connection map (force-directed graph) ===================== */
 let MAP={nodes:[],links:[],raf:null,alpha:0,svg:null,g:null,t:{x:0,y:0,k:1},drag:null,pan:null,W:0,H:0,show:{tribe:true,char:true,story:true,user:true,mention:true}};
 const NCOLOR={tribe:"#9a8fd6",char:"#7aa2c8",story:"#84c89a",user:"#e0a3c8"};
-const NLABEL={tribe:"שבט",char:"דמות",story:"סיפור",user:"אדם"};
+const NLABEL={tribe:"נושא",char:"דמות",story:"סיפור",user:"אדם"};
 
 function viewMap(){
   const leg=Object.keys(NCOLOR).map(k=>`<label class="legitem"><input type="checkbox" checked onchange="mapToggle('${k}',this.checked)"><span class="dot-leg" style="background:${NCOLOR[k]}"></span>${NLABEL[k]}</label>`).join("");
   return `<div class="lead">
       <h1>מפת הקשרים</h1>
-      <p>כל החיבורים שקיימים כרגע: אנשים, דמויות, סיפורים ושבטים, והקשרים ביניהם (שייכות, תיוג, אזכור). גרור לזוז, גלגל לזום, גרור צומת להזיז, לחץ צומת כדי לעבור אליו.</p>
+      <p>כל החיבורים שקיימים כרגע: אנשים, דמויות, סיפורים ונושאים, והקשרים ביניהם (שייכות, תיוג, אזכור). גרור לזוז, גלגל לזום, גרור צומת להזיז, לחץ צומת כדי לעבור אליו.</p>
     </div>
     <div class="map-controls">
       ${leg}
@@ -971,7 +971,7 @@ function viewMap(){
       <button class="btn sm ghost" onclick="mapZoom(0.8)">−</button>
     </div>
     <div class="map-wrap" id="map-wrap"><svg id="map-svg"></svg>
-      <div class="map-empty" id="map-empty" style="display:none">אין עדיין מספיק קשרים. צור דמויות, סיפורים, תייג שבטים ו-@אזכורים, והעץ יתחיל לצמוח.</div>
+      <div class="map-empty" id="map-empty" style="display:none">אין עדיין מספיק קשרים. צור דמויות, סיפורים, תייג נושאים ו-@אזכורים, והעץ יתחיל לצמוח.</div>
     </div>`;
 }
 
@@ -1316,15 +1316,15 @@ function deleteSubProfile(id){
 function privToggle(on, onclickStr){
   return `<button class="ptoggle ${on?'on':''}" onclick="event.stopPropagation();${onclickStr}"><span class="knob"></span>${on?'חסוי':'גלוי'}</button>`;
 }
-function setCharVis(id,on){ const c=DB.chars.find(x=>x.id===id); if(c){ c.vis=on?"private":"public"; save(); render(); } }
-function setEntrySecret(cid,eid,on){ const c=DB.chars.find(x=>x.id===cid); const e=c&&c.entries.find(x=>x.id===eid); if(e){ e.mode=on?"secret":"mine"; save(); render(); } }
-function setLooseSecret(id,on){ const s=DB.loose.find(x=>x.id===id); if(s){ s.mode=on?"secret":"mine"; save(); render(); } }
-function setUserColor(c){ me().color=c||undefined; save(); render(); }
+function setCharVis(id,on){ const c=DB.chars.find(x=>x.id===id); if(c){ c.vis=on?"private":"public"; save(); if(typeof sbSaveChar==="function") sbSaveChar(c); render(); } }
+function setEntrySecret(cid,eid,on){ const c=DB.chars.find(x=>x.id===cid); const e=c&&c.entries.find(x=>x.id===eid); if(e){ e.mode=on?"secret":"mine"; save(); if(typeof sbSaveStory==="function") sbSaveStory(e, cid); render(); } }
+function setLooseSecret(id,on){ const s=DB.loose.find(x=>x.id===id); if(s){ s.mode=on?"secret":"mine"; save(); if(typeof sbSaveStory==="function") sbSaveStory(s, null); render(); } }
+function setUserColor(c){ const u=me(); u.color=c||undefined; save(); if(typeof sbSaveProfile==="function") sbSaveProfile(u); render(); }
 function setTribeColorCur(c){ const t=route.id; if(!DB.tribeMeta[t]) DB.tribeMeta[t]={media:[]}; DB.tribeMeta[t].color=c||undefined; save(); if(typeof sbSaveTribe==="function") sbSaveTribe(t, c); render(); }
 function myTribeHidden(t){ const u=me(); return !!(u.privTribes && u.privTribes.includes(t)); }
 function toggleMyTribe(t,on){ const u=me(); if(!u.privTribes) u.privTribes=[];
   if(on){ if(!u.privTribes.includes(t)) u.privTribes.push(t); } else { u.privTribes=u.privTribes.filter(x=>x!==t); }
-  save(); render(); }
+  save(); if(typeof sbSaveProfile==="function") sbSaveProfile(u); render(); }
 
 function exportData(){
   const data=JSON.stringify(DB,null,2);
@@ -1517,12 +1517,12 @@ function viewDiscover(){
     <div class="grid" id="disc-stories">${looseList.map(storyCard).join("")}</div>` : "";
   return `<div class="lead">
       <h1>גילוי</h1>
-      <p>דמויות וסיפורים של כולם, מסודרים בשבטים. בחר שבט כדי לראות מי עוד חושב על אותו נושא דרך הדמויות שלו.</p>
+      <p>דמויות וסיפורים של כולם, מסודרים בנושאים. בחר נושא כדי לראות מי עוד חושב על אותו עניין דרך הדמויות שלו.</p>
     </div>
     ${chips}
     ${controls}
     <div class="section-title"><h2>דמויות</h2><span class="count" id="disc-chars-count">${list.length}</span><div class="line"></div></div>
-    <div class="grid" id="disc-chars">${ list.length? list.map(card).join("") : `<div class="empty">אין עדיין דמויות${tribeFilter?` בשבט "${esc(tribeFilter)}"`:""}.</div>`}</div>
+    <div class="grid" id="disc-chars">${ list.length? list.map(card).join("") : `<div class="empty">אין עדיין דמויות${tribeFilter?` בנושא "${esc(tribeFilter)}"`:""}.</div>`}</div>
     ${looseSection}
     <div class="empty" id="disc-noresults" style="display:none">לא נמצאו תוצאות לחיפוש.</div>`;
 }
@@ -1629,7 +1629,7 @@ function viewStory(id){
 function tribeColor(t){ if(DB.tribeMeta[t]&&DB.tribeMeta[t].color) return DB.tribeMeta[t].color;
   const c=["#9a8fd6","#7aa2c8","#84c89a","#c889b4","#6ac1c8","#cd7d7d","#b0a06a","#8f9ad6"]; let h=0; for(const ch of t) h=(h+ch.charCodeAt(0))%c.length; return c[h]; }
 function viewTribes(){
-  // רק שבטים פעילים (עם תוכן), מהפעיל לדליל — שבטים ריקים מוסתרים כדי לא להציף.
+  // רק נושאים פעילים (עם תוכן), מהפעיל לדליל — נושאים ריקים מוסתרים כדי לא להציף.
   const tribes=allTribes().filter(t=>tribeTotal(t)>0).sort((a,b)=>tribeTotal(b)-tribeTotal(a));
   const cards=tribes.map(t=>{
     const col=tribeColor(t), nc=charsInTribe(t).length, ns=looseInTribe(t).length;
@@ -1640,16 +1640,16 @@ function viewTribes(){
     </div>`;
   }).join("");
   return `<div class="lead">
-      <h1>שבטים</h1>
-      <p>הנושאים העליונים. כל שבט מאגד את הדמויות והסיפורים שחושבים על אותו עניין.</p>
+      <h1>נושאים</h1>
+      <p>הנושאים העליונים. כל נושא מאגד את הדמויות והסיפורים שחושבים על אותו עניין.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px">
-        <input id="tribe-search" placeholder="🔍 חיפוש שבט…" oninput="filterTribes(this.value)"
+        <input id="tribe-search" placeholder="🔍 חיפוש נושא…" oninput="filterTribes(this.value)"
           style="flex:1;min-width:180px;max-width:320px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 14px;color:var(--ink);font-family:inherit;font-size:14px;outline:none">
-        <button class="btn sm" onclick="createTribe()">+ פתח שבט חדש</button>
-        <span class="hint" id="tribe-count">${tribes.length} שבטים פעילים</span>
+        <button class="btn sm" onclick="createTribe()">+ פתח נושא חדש</button>
+        <span class="hint" id="tribe-count">${tribes.length} נושאים פעילים</span>
       </div>
     </div>
-    <div class="grid" id="tribes-grid">${ tribes.length? cards : `<div class="empty">עוד אין שבטים פעילים. תייג דמות/סיפור לשבט, או "פתח שבט חדש".</div>`}</div>`;
+    <div class="grid" id="tribes-grid">${ tribes.length? cards : `<div class="empty">עוד אין נושאים פעילים. תייג דמות/סיפור לנושא, או "פתח נושא חדש".</div>`}</div>`;
 }
 function filterTribes(q){
   q=(q||"").trim().toLowerCase();
@@ -1659,12 +1659,12 @@ function filterTribes(q){
     el.style.display = hit ? "" : "none";
     if(hit) shown++;
   });
-  const c=document.getElementById("tribe-count"); if(c) c.textContent = q ? (shown+" תוצאות") : (document.querySelectorAll("#tribes-grid .tribe-card").length+" שבטים פעילים");
+  const c=document.getElementById("tribe-count"); if(c) c.textContent = q ? (shown+" תוצאות") : (document.querySelectorAll("#tribes-grid .tribe-card").length+" נושאים פעילים");
 }
 function createTribe(){
-  const name=prompt("שם השבט החדש:"); if(!name||!name.trim()) return;
+  const name=prompt("שם הנושא החדש:"); if(!name||!name.trim()) return;
   const t=name.trim();
-  // מניעת כפילות: אם כבר קיים שבט עם אותו שם (ללא תלות באותיות גדולות/רישיות) — נשתמש בו.
+  // מניעת כפילות: אם כבר קיים נושא עם אותו שם (ללא תלות באותיות גדולות/רישיות) — נשתמש בו.
   const existing=allTribes().find(x=>x.toLowerCase()===t.toLowerCase());
   const tribe=existing||t;
   if(!DB.tribeMeta[tribe]) DB.tribeMeta[tribe]={};
@@ -1676,17 +1676,17 @@ function viewTribe(t){
   const col=tribeColor(t);
   const chars=charsInTribe(t).sort((a,b)=>lastTs(b)-lastTs(a));
   const stories=looseInTribe(t).sort((a,b)=>b.ts-a.ts);
-  return `<button class="back" onclick="go('tribes')">← כל השבטים</button>
+  return `<button class="back" onclick="go('tribes')">← כל הנושאים</button>
     <div class="tribe-head">
       <div class="tribe-gem" style="background:${col}22;border-color:${col}66;color:${col}">☷</div>
-      <div style="flex:1"><h1>${esc(t)}</h1><p>שבט · ${chars.length} דמויות · ${stories.length} סיפורים</p></div>
+      <div style="flex:1"><h1>${esc(t)}</h1><p>נושא · ${chars.length} דמויות · ${stories.length} סיפורים</p></div>
       <div class="tribe-priv">ההשתתפות שלי: ${privToggle(myTribeHidden(t),`toggleMyTribe('${esc(t)}',${!myTribeHidden(t)})`)}</div>
     </div>
-    <div class="tribe-color"><span class="dest-label">צבע השבט:</span>${colorRow((DB.tribeMeta[t]||{}).color||"","setTribeColorCur")}</div>
-    <div class="section-title"><h2>דמויות בשבט</h2><span class="count">${chars.length}</span><div class="line"></div></div>
-    <div class="grid">${ chars.length? chars.map(card).join("") : `<div class="empty">אין דמויות בשבט הזה.</div>`}</div>
+    <div class="tribe-color"><span class="dest-label">צבע הנושא:</span>${colorRow((DB.tribeMeta[t]||{}).color||"","setTribeColorCur")}</div>
+    <div class="section-title"><h2>דמויות בנושא</h2><span class="count">${chars.length}</span><div class="line"></div></div>
+    <div class="grid">${ chars.length? chars.map(card).join("") : `<div class="empty">אין דמויות בנושא הזה.</div>`}</div>
     ${ stories.length? `
-      <div class="section-title"><h2>סיפורים בשבט</h2><span class="count">${stories.length}</span><div class="line"></div></div>
+      <div class="section-title"><h2>סיפורים בנושא</h2><span class="count">${stories.length}</span><div class="line"></div></div>
       <div class="grid">${stories.map(storyCard).join("")}</div>` : ""}
     ${attachPanel("tribe",t,(DB.tribeMeta[t]||{}).media,true)}`;
 }
@@ -2546,6 +2546,7 @@ async function sbSaveConvo(t, characterId){
 }
 async function sbDelChar(id){ if(sb){ const r=await sb.from("characters").delete().eq("id",id); if(r.error) console.error("sbDelChar",r.error); } }
 async function sbDelStory(id){ if(sb){ const r=await sb.from("stories").delete().eq("id",id); if(r.error) console.error("sbDelStory",r.error); } }
+async function sbSaveProfile(u){ if(!sb||!u) return; const r=await sb.from("profiles").update({ color:u.color||null, priv_tribes:u.privTribes||[] }).eq("id", u.id); if(r.error) console.error("sbSaveProfile",r.error); }
 async function sbSaveTribe(name, color){ if(sb){ const r=await sb.from("tribe_meta").upsert({ name, color: color||null }); if(r.error) console.error("sbSaveTribe",r.error); } }
 async function sbSaveLink(l){ if(sb){ const r=await sb.from("links").upsert({ id:l.id, owner_id:l.ownerId, url:l.url, title:l.title||null, note:l.note||null, attach_type:l.attachType||null, attach_id:l.attachId||null, ts:l.ts||Date.now() }); if(r.error) console.error("sbSaveLink",r.error); } }
 async function sbDelLink(id){ if(sb){ const r=await sb.from("links").delete().eq("id",id); if(r.error) console.error("sbDelLink",r.error); } }
