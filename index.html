@@ -1173,8 +1173,11 @@ function tribeTotal(t){ return charsInTribe(t).length + looseInTribe(t).length; 
 /* ---------- nav state ---------- */
 let route = {name:"discover", id:null};
 let tribeFilter = null;
+let discoverSort = "recent"; // recent | active
+let discoverQuery = "";
 function go(name, id=null){ route={name,id}; render(); window.scrollTo(0,0); }
 function setTribe(t){ tribeFilter = (tribeFilter===t)?null:t; render(); }
+function setDiscoverSort(s){ if(discoverSort===s) return; discoverSort=s; render(); }
 
 /* ---------- top user switcher ---------- */
 function renderWho(){
@@ -1399,6 +1402,7 @@ function render(){
   else if(route.name==="tribe") v.innerHTML=viewTribe(route.id);
   else if(route.name==="entry") v.innerHTML=viewEntry(route.id, route.eid);
   else if(route.name==="map"){ v.innerHTML=viewMap(); initMap(); }
+  if(route.name==="discover" && discoverQuery) filterDiscover(discoverQuery);
   if(pendingScroll){
     const el=document.getElementById("story-"+pendingScroll);
     pendingScroll=null;
@@ -1414,7 +1418,8 @@ function card(c){
   if(c.talk>0) tags.push(`<span class="tag talk">${TALK[c.talk]}</span>`);
   if(hasContribute(c)) tags.push(`<span class="tag collab">⤳ פתוח לתרומה</span>`);
   const vcount = visibleEntries(c).length;
-  return `<div class="card" onclick="go('char','${c.id}')">
+  const search=esc(((c.name||"")+" "+(c.preview||c.essence||"")+" "+o.name+" "+(c.tribes||[]).join(" ")).toLowerCase());
+  return `<div class="card" data-search="${search}" onclick="go('char','${c.id}')">
     <div class="glyph"${glyphStyle(c.color)}>${c.glyph}</div>
     <h3>${esc(c.name)}</h3>
     <p class="essence">${esc(c.preview||c.essence)}</p>
@@ -1429,7 +1434,8 @@ function card(c){
 function storyCard(s){
   const o=user(s.ownerId);
   const m=EMODES[s.mode||"mine"];
-  return `<div class="card story-card" onclick="go('story','${s.id}')">
+  const search=esc(((s.title||"")+" "+(s.text||"")+" "+o.name+" "+(s.tribes||[]).join(" ")).toLowerCase());
+  return `<div class="card story-card" data-search="${search}" onclick="go('story','${s.id}')">
     ${s.media&&s.media.length?`<div class="cover"><img src="${s.media[0]}" alt=""></div>`:`<div class="glyph"${glyphStyle(s.color)}>✍</div>`}
     <h3>${esc(s.title||"ללא כותרת")}</h3>
     <p class="essence">${esc(s.preview||snippet(s.text,170))}</p>
@@ -1482,26 +1488,61 @@ function viewEntry(charId, entryId){
     ${sharePanel("story", e.id, own)}`;
 }
 
+function charActivity(c){ return visibleEntries(c).length + (c.convo?c.convo.length:0); }
+function sortDiscover(arr, isChar){
+  if(discoverSort==="active" && isChar) return arr.sort((a,b)=> charActivity(b)-charActivity(a) || lastTs(b)-lastTs(a));
+  return isChar ? arr.sort((a,b)=>lastTs(b)-lastTs(a)) : arr.sort((a,b)=>b.ts-a.ts);
+}
 function viewDiscover(){
-  let list=DB.chars.filter(c=>c.vis==="public"||sharedToMe(c)).sort((a,b)=>lastTs(b)-lastTs(a));
+  let list=DB.chars.filter(c=>c.vis==="public"||sharedToMe(c));
   if(tribeFilter) list=list.filter(c=>(c.tribes||[]).includes(tribeFilter));
+  list=sortDiscover(list, true);
   const tribes=allTribes().filter(t=>tribeCount(t)>0).sort((a,b)=>tribeCount(b)-tribeCount(a));
   const chips=`<div class="tribebar">
       <button class="chip ${!tribeFilter?'sel':''}" onclick="setTribe(null)">הכל</button>
       ${tribes.map(t=>`<button class="chip ${tribeFilter===t?'sel':''}" onclick="setTribe('${esc(t)}')">${esc(t)} <i>${tribeCount(t)}</i></button>`).join("")}
     </div>`;
-  const looseList = tribeFilter ? [] : DB.loose.filter(s=>(s.mode||"mine")!=="secret"||sharedToMe(s)).sort((a,b)=>b.ts-a.ts);
+  const controls=`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0 4px">
+      <input id="disc-search" placeholder="🔍 חיפוש דמות / סיפור / טקסט…" value="${esc(discoverQuery)}" oninput="filterDiscover(this.value)"
+        style="flex:1;min-width:200px;max-width:340px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 14px;color:var(--ink);font-family:inherit;font-size:14px;outline:none">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="chip ${discoverSort==='recent'?'sel':''}" onclick="setDiscoverSort('recent')">אחרונים</button>
+        <button class="chip ${discoverSort==='active'?'sel':''}" onclick="setDiscoverSort('active')">הכי פעילים</button>
+      </div>
+    </div>`;
+  let looseList = tribeFilter ? [] : DB.loose.filter(s=>(s.mode||"mine")!=="secret"||sharedToMe(s));
+  looseList=sortDiscover(looseList, false);
   const looseSection = looseList.length ? `
-    <div class="section-title"><h2>סיפורים עצמאיים</h2><span class="count">${looseList.length}</span><div class="line"></div></div>
-    <div class="grid">${looseList.map(storyCard).join("")}</div>` : "";
+    <div class="section-title" id="disc-stories-title"><h2>סיפורים עצמאיים</h2><span class="count" id="disc-stories-count">${looseList.length}</span><div class="line"></div></div>
+    <div class="grid" id="disc-stories">${looseList.map(storyCard).join("")}</div>` : "";
   return `<div class="lead">
       <h1>גילוי</h1>
       <p>דמויות וסיפורים של כולם, מסודרים בשבטים. בחר שבט כדי לראות מי עוד חושב על אותו נושא דרך הדמויות שלו.</p>
     </div>
     ${chips}
-    <div class="section-title"><h2>דמויות</h2><span class="count">${list.length}</span><div class="line"></div></div>
-    <div class="grid">${ list.length? list.map(card).join("") : `<div class="empty">אין עדיין דמויות${tribeFilter?` בשבט "${esc(tribeFilter)}"`:""}.</div>`}</div>
-    ${looseSection}`;
+    ${controls}
+    <div class="section-title"><h2>דמויות</h2><span class="count" id="disc-chars-count">${list.length}</span><div class="line"></div></div>
+    <div class="grid" id="disc-chars">${ list.length? list.map(card).join("") : `<div class="empty">אין עדיין דמויות${tribeFilter?` בשבט "${esc(tribeFilter)}"`:""}.</div>`}</div>
+    ${looseSection}
+    <div class="empty" id="disc-noresults" style="display:none">לא נמצאו תוצאות לחיפוש.</div>`;
+}
+function filterDiscover(q){
+  discoverQuery = q||"";
+  const term=discoverQuery.trim().toLowerCase();
+  let total=0;
+  [["disc-chars","disc-chars-count"],["disc-stories","disc-stories-count"]].forEach(([gid,cid])=>{
+    const grid=document.getElementById(gid); if(!grid) return;
+    let shown=0;
+    grid.querySelectorAll(".card").forEach(el=>{
+      const hit = !term || (el.dataset.search||"").includes(term);
+      el.style.display = hit ? "" : "none";
+      if(hit) shown++;
+    });
+    total+=shown;
+    const cnt=document.getElementById(cid); if(cnt) cnt.textContent=shown;
+    if(gid==="disc-stories"){ const title=document.getElementById("disc-stories-title"); if(title) title.style.display=(term&&shown===0)?"none":""; }
+  });
+  const nr=document.getElementById("disc-noresults"); if(nr) nr.style.display=(term&&total===0)?"":"none";
 }
 function lastTs(c){ const all=[...c.entries,...c.convo]; return all.length?Math.max(...all.map(x=>x.ts)):0; }
 function emode(e){ return e.mode || "mine"; }
